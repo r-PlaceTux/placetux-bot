@@ -41,12 +41,16 @@ Note: Please use https://jsonlint.com/ to check that your JSON file is correctly
 
 ```json
 {
-  //Where the image's path is
-  "image_path":"image.png",
-  // [x,y] where you want the top left pixel of the local image to be drawn on canvas
-  "image_start_coords": [20, 679],
+  //The hash of the latest update
+  "image_hash_url": "https://r-placetux.github.io/place_tux/bot_hash",
   // delay between starting threads (can be 0)
-  "thread_delay": 2,
+  "thread_delay": 10,
+  //the images
+  "images": {
+    //add here images for the bots to use
+    "prio":"https://r-placetux.github.io/place_tux/priority"
+  },
+
   // array of accounts to use
   "workers": {
     // username of account 1
@@ -54,7 +58,9 @@ Note: Please use https://jsonlint.com/ to check that your JSON file is correctly
       // password of account 1
       "password": "password",
       // which pixel of the image to draw first
-      "start_coords": [0, 0]
+      "start_coords": [0, 0],
+      //the image this bot will build
+      "image": "prio"
     },
     // username of account 2
     "worker1username": {
@@ -62,6 +68,8 @@ Note: Please use https://jsonlint.com/ to check that your JSON file is correctly
       "password": "password",
       // which pixel of the image to draw first
       "start_coords": [0, 0]
+      //the image this bot will build
+      "image": "prio"
     }
     // etc... add as many accounts as you want (but reddit may detect you the more you add)
   }
@@ -72,6 +80,7 @@ Note: Please use https://jsonlint.com/ to check that your JSON file is correctly
 
 -  Multiple fields can be passed into the arrays to spawn a thread for each one.
 - If you use 2 factor authentication (2FA) in your account, then change "password" to "password:XXXXXX" where XXXXXX is your 2FA code.
+- Images are configurable but require a "positions.json" in the same directory as the image_url
 
 ## Run the Script
 
@@ -92,23 +101,39 @@ chmod +x start.sh startverbose.sh
 
 `python3 main.py -d` or `python3 main.py --debug`
 
+
+## Configure the Image(s)
+
+The bot supports all the art from [The Offical Art Repo](https://github.com/r-PlaceTux/place_tux/tree/main/artwork)! It also supports specieving for each worker a dedicated image to work on. Add images to the config.json as follows:
+```json
+    "images": {
+        "tux":"https://r-placetux.github.io/place_tux/artwork/tux/",
+        "<image_name>":"https://r-placetux.github.io/place_tux/artwork/<dir>/",
+        //this is the priority image 
+        "prio":"https://r-placetux.github.io/place_tux/priority"
+    }
+```
+The image name and directory can be found in  [The Offical Art Repo](https://github.com/r-PlaceTux/place_tux/tree/main/artwork) 
+
 ## Multiple Workers
 
 Just create multiple child arrays to "workers" in the .json
 
 ```json
 {
-  "image_start_coords": [20, 679],
+  "image_hash_url": "https://r-placetux.github.io/place_tux/bot_hash",
   "thread_delay": 2,
 
   "workers": {
     "worker1username": {
       "password": "password",
-      "start_coords": [0, 0]
+      "start_coords": [0, 0],
+      "image": "image"
     },
     "worker2username": {
       "password": "password",
-      "start_coords": [0, 50]
+      "start_coords": [0, 50],
+      "image": "image"
     }
   }
 }

@@ -26,8 +26,12 @@ class PlaceClient:
     def __init__(self, config_path):
         # Data
         self.json_data = self.get_json_data(config_path)
-        self.pixel_x_start: int = self.json_data["image_start_coords"][0]
-        self.pixel_y_start: int = self.json_data["image_start_coords"][1]
+
+        if "image_start_coords" in self.json_data or "image_url" in self.json_data:
+            logger.error(
+                "You seem to have an old config.json file! Please update accourding to the README.md or config_example.json"
+            )
+            exit(1)
 
         # In seconds
         self.delay_between_launches = (
@@ -58,6 +62,12 @@ class PlaceClient:
             else True
         )
 
+        self.image_hash_url = (
+            self.json_data["image_hash_url"]
+            if "image_hash_url" in self.json_data
+            else None
+        )
+
         # Color palette
         self.rgb_colors_array = ColorMapper.generate_rgb_colors_array()
 
@@ -66,21 +76,29 @@ class PlaceClient:
         self.access_token_expires_at_timestamp = {}
 
         # Image information
-        self.pix = None
+        self.pix = {}
         self.image_size = None
         self.first_run_counter = 0
 
-        # Setting some values from config
-        self.image_url = self.json_data["image_url"]
-        self.image_hash_url = self.json_data["image_hash_url"]
+        self.images = self.json_data["images"]
 
-        # Setting the local path for the image
-        self.image_path = os.path.join(os.path.abspath(os.getcwd()), "image.png")
+        self.image_base_path = os.path.join(os.path.abspath(os.getcwd()) + "/images")
+        if not os.path.isdir(self.image_base_path):
+            os.mkdir(self.image_base_path)
+
+        self.image_paths = {
+            x: os.path.join(self.image_base_path, x + ".png")
+            for x in self.images.keys()
+        }
 
         self.image_hash = None
+        self.pixel_x_start = {}
+        self.pixel_y_start = {}
 
         # Initialize-functions
-        self.update_image()  # Download the new version
+        if not self.update_image_config():
+            # Config could not be fetched
+            exit(1)  # Download the new version
         self.load_image()  # Load the image
 
         self.waiting_thread_index = -1
@@ -113,7 +131,6 @@ class PlaceClient:
         logger.debug("Using proxy: {}", str(random_proxy))
         return random_proxy
 
-
     def get_json_data(self, config_path):
         configFilePath = os.path.join(os.getcwd(), config_path)
 
@@ -145,50 +162,139 @@ class PlaceClient:
         logger.info("The bot source image is out of date, updating!")
 
         # The hashes don't match, meaning the bot is out of date
-        if self.update_image():
+        if self.update_image_config():
             self.load_image()
 
-    def update_image(self) -> bool:
+    def get_resource_urls(self, url, name):
+        image_url = None
+        position_url = None
+
+        if url.endswith("/"):
+            image_url = url + name + ".png"
+            position_url = url + "positions.json"
+            logger.debug(
+                "Determinded that position url is: {} for {}", position_url, name
+            )
+            return (
+                True,
+                image_url,
+                position_url,
+                name + ".png",
+            )
+        elif url.endswith("priority"):
+            remote_priority_req = requests.get(url, stream=True)
+
+            if remote_priority_req.status_code != 200:
+                logger.warning("Failed to fetch remote priority target: {}", url)
+                return (False, None, None, None)
+
+            image_url = remote_priority_req.text
+            if image_url.endswith("\n"):
+                image_url = image_url[0 : len(image_url) - 1]
+
+            logger.debug(
+                "Recieved remote priority target: {}", remote_priority_req.text
+            )
+            last_index = image_url.rfind("/")
+            image_name = image_url[last_index + 1 : len(image_url)]
+            position_url = image_url[0:last_index] + "/positions.json"
+            logger.debug(
+                "Determinded that position url is: {} for {}", position_url, image_name
+            )
+        else:
+            logger.error("Invalid image URL: {}", url)
+            return (False, None, None, None)
+
+        return (True, image_url, position_url, image_name)
+
+    def update_image_config(self):
         logger.info("Starting an image update")
 
         remote_hash_req = requests.get(self.image_hash_url)
         remote_hash = remote_hash_req.content
 
-        remote_image_req = requests.get(self.image_url, stream=True)
-
-        if remote_image_req.status_code != 200:
-            logger.warning("Failed to update bot source image")
-            # Returning if the response fails
-            return False
-
-        with open(self.image_path, "wb") as f:
-            shutil.copyfileobj(remote_image_req.raw, f)
-
-        logger.info("Bot source image updated")
-
-        # Updating the hash so the auto updater doesn't get confused
         self.image_hash = remote_hash
+
+        logger.debug("IMAGES: {}", self.images)
+        for name, url in self.images.items():
+            (succes, image_url, position_url, image_name) = self.get_resource_urls(
+                url, name
+            )
+
+            if not succes:
+                return False
+
+            self.image_hash = remote_hash
+
+            remote_image_req = requests.get(image_url, stream=True)
+            remote_position_req = requests.get(position_url, stream=True)
+
+            if (
+                remote_image_req.status_code != 200
+                or remote_position_req.status_code != 200
+            ):
+                logger.warning("Failed to update bot source image config")
+
+                if remote_image_req.status_code != 200:
+                    logger.debug(
+                        "Failed to fetch image: {} {}", image_url, remote_image_req
+                    )
+                if remote_image_req.status_code != 200:
+                    logger.debug(
+                        "Failed to fetch positions file: {} {}",
+                        position_url,
+                        remote_position_req,
+                    )
+
+                # Returning if the response fails
+                return False
+
+            with open(self.image_paths[name], "wb") as f:
+                shutil.copyfileobj(remote_image_req.raw, f)
+
+            logger.debug("Bot source image updated: {}", image_url)
+
+            # Updating the hash so the auto updater doesn't get confused
+            self.pixel_x_start[name] = None
+            self.pixel_y_start[name] = None
+
+            for data in remote_position_req.json():
+                if data["img_url"] == image_name:
+
+                    self.pixel_x_start[name] = data["x0"]
+                    self.pixel_y_start[name] = data["y0"]
+                    logger.debug(
+                        "Fetched remote position: {} for {}",
+                        (self.pixel_x_start[name], self.pixel_y_start[name]),
+                        image_name,
+                    )
+                    break
+
+        # If we end up here we didn't update the x and y start!
         return True
 
     def load_image(self):
         # Read and load the image to draw and get its dimensions
-        try:
-            im = Image.open(self.image_path)
-        except FileNotFoundError:
-            logger.exception("Failed to load image")
-            exit()
-        except UnidentifiedImageError:
-            logger.exception("File found, but couldn't identify image format")
+        self.pix = {}
+        self.image_size = {}
+        for name, path in self.image_paths.items():
+            try:
+                im = Image.open(path)
+            except FileNotFoundError:
+                logger.exception("Failed to load image")
+                exit()
+            except UnidentifiedImageError:
+                logger.exception("File found, but couldn't identify image format")
 
-        # Convert all images to RGBA - Transparency should only be supported with PNG
-        if im.mode != "RGBA":
-            im = im.convert("RGBA")
-            logger.info("Converted to rgba")
-        self.pix = im.load()
+            # Convert all images to RGBA - Transparency should only be supported with PNG
+            if im.mode != "RGBA":
+                im = im.convert("RGBA")
+                logger.info("Converted to rgba")
+            self.pix[name] = im.load()
 
-        logger.info("Loaded image size: {}", im.size)
+            logger.info("Loaded image size: {}", im.size)
 
-        self.image_size = im.size
+            self.image_size[name] = im.size
 
     """ Main """
     # Draw a pixel at an x, y coordinate in r/place with a specific color
@@ -433,7 +539,7 @@ class PlaceClient:
 
         return new_img
 
-    def get_unset_pixel(self, x, y, index):
+    def get_unset_pixel(self, x, y, index, name):
         originalX = x
         originalY = y
         loopedOnce = False
@@ -454,41 +560,58 @@ class PlaceClient:
                 wasWaiting = False
                 time.sleep(index * self.delay_between_launches)
 
-            if x >= self.image_size[0]:
+            if x >= self.image_size[name][0]:
                 y += 1
                 x = 0
 
-            if y >= self.image_size[1]:
+            if y >= self.image_size[name][1]:
 
                 y = 0
 
             if x == originalX and y == originalY and loopedOnce:
+
+                random_sleep = random.randint(1, 15)
+                logger.debug("Thread #{} :: random extra sleep {}", random_sleep)
                 logger.info(
-                    "Thread #{} : All pixels correct, trying again in 10 seconds... ",
+                    "Thread #{} : All pixels correct, trying again in {} seconds... ",
                     index,
+                    (10 + random_sleep),
                 )
                 self.waiting_thread_index = index
-                time.sleep(10)
+                time.sleep(10 + random_sleep)
                 imgOutdated = True
 
             if imgOutdated:
-                boardimg = self.get_board(self.access_tokens[index])
+                while True:
+                    try:
+                        boardimg = self.get_board(self.access_tokens[index])
+                        break
+                    except Exception as e:
+                        logger.debug("Thread #{} : {}", index, e)
+                        logger.error(
+                            "Thread #{} : Error detected while fetching board! retrying in 30 seconds",
+                            index,
+                        )
+                        time.sleep(30)
                 pix2 = boardimg.convert("RGB").load()
                 imgOutdated = False
 
-            logger.debug("{}, {}", x + self.pixel_x_start, y + self.pixel_y_start)
-            logger.debug(
-                "{}, {}, boardimg, {}, {}", x, y, self.image_size[0], self.image_size[1]
-            )
+            # logger.debug("{}, {}", x + self.pixel_x_start, y + self.pixel_y_start)
+            # logger.debug(
+            #     "{}, {}, boardimg, {}, {}", x, y, self.image_size[0], self.image_size[1]
+            # )
 
-            target_rgb = self.pix[x, y][:3]
-            is_transparent = self.pix[x, y][3] == 0
+            target_rgb = self.pix[name][x, y][:3]
+            is_transparent = self.pix[name][x, y][3] == 0
 
             new_rgb = ColorMapper.closest_color(target_rgb, self.rgb_colors_array)
-            if pix2[x + self.pixel_x_start, y + self.pixel_y_start] != new_rgb:
+            if (
+                pix2[x + self.pixel_x_start[name], y + self.pixel_y_start[name]]
+                != new_rgb
+            ):
                 logger.debug(
                     "{}, {}, {}, {}",
-                    pix2[x + self.pixel_x_start, y + self.pixel_y_start],
+                    pix2[x + self.pixel_x_start[name], y + self.pixel_y_start[name]],
                     new_rgb,
                     is_transparent,
                     pix2[x, y] != new_rgb,
@@ -497,9 +620,11 @@ class PlaceClient:
                     logger.debug(
                         "Thread #{} : Replacing {} pixel at: {},{} with {} color",
                         index,
-                        pix2[x + self.pixel_x_start, y + self.pixel_y_start],
-                        x + self.pixel_x_start,
-                        y + self.pixel_y_start,
+                        pix2[
+                            x + self.pixel_x_start[name], y + self.pixel_y_start[name]
+                        ],
+                        x + self.pixel_x_start[name],
+                        y + self.pixel_y_start[name],
                         new_rgb,
                     )
                     break
@@ -532,7 +657,7 @@ class PlaceClient:
 
             # Time until next pixel is drawn
             update_str = ""
-
+            imgname = worker["image"] if "image" in worker else "image"
             # Refresh auth tokens and / or draw a pixel
             while True:
                 # reduce CPU usage
@@ -679,9 +804,7 @@ class PlaceClient:
 
                     # get current pixel position from input image and replacement color
                     current_r, current_c, new_rgb = self.get_unset_pixel(
-                        current_r,
-                        current_c,
-                        index,
+                        current_r, current_c, index, imgname
                     )
 
                     # get converted color
@@ -692,8 +815,8 @@ class PlaceClient:
                     # draw the pixel onto r/place
                     # There's a better way to do this
                     canvas = 0
-                    pixel_x_start = self.pixel_x_start + current_r
-                    pixel_y_start = self.pixel_y_start + current_c
+                    pixel_x_start = self.pixel_x_start[imgname] + current_r
+                    pixel_y_start = self.pixel_y_start[imgname] + current_c
                     while pixel_x_start > 999:
                         pixel_x_start -= 1000
                         canvas += 1
@@ -714,12 +837,12 @@ class PlaceClient:
                     current_r += 1
 
                     # go back to first column when reached end of a row while drawing
-                    if current_r >= self.image_size[0]:
+                    if current_r >= self.image_size[imgname][0]:
                         current_r = 0
                         current_c += 1
 
                     # exit when all pixels drawn
-                    if current_c >= self.image_size[1]:
+                    if current_c >= self.image_size[imgname][1]:
                         logger.info("Thread #{} :: image completed", index)
                         break
 

@@ -1,18 +1,29 @@
 {
-    "image_start_coords": [20, 679],
     "thread_delay": 10,
     "unverified_place_frequency": false,
     "compact_logging": true,
-    "image_url": "https://r-placetux.github.io/place_tux/tux_raw.png",
     "image_hash_url": "https://r-placetux.github.io/place_tux/bot_hash",
+    "images": {
+        "tux":"https://r-placetux.github.io/place_tux/artwork/tux/",
+        "mit":"https://r-placetux.github.io/place_tux/artwork/allies/",
+        "prio":"https://r-placetux.github.io/place_tux/priority",
+        "tux_button": "https://r-placetux.github.io/place_tux/artwork/tux_button/"
+    },
     "workers": {
         "worker1username": {
             "password": "password",
-            "start_coords": [0, 0]
+            "start_coords": [0, 0],
+            "image": "tux"
         },
         "worker2username": {
             "password": "password",
-            "start_coords": [0, 0]
+            "start_coords": [0, 0],
+            "image": "mit"
+        },
+        "worker3username": {
+            "password": "password",
+            "start_coords": [0, 0],
+            "image": "prio"
         }
     }
 }
