@@ -3,7 +3,6 @@
 import os
 import os.path
 import math
-from urllib.request import url2pathname
 
 import requests
 import json
@@ -30,7 +29,7 @@ class PlaceClient:
 
         if "image_start_coords" in self.json_data or "image_url" in self.json_data:
             logger.error(
-                'You seem to have an old config.json file! Please update accourding to the README.md or config_example.json'
+                "You seem to have an old config.json file! Please update accourding to the README.md or config_example.json"
             )
             exit(1)
 
@@ -62,13 +61,13 @@ class PlaceClient:
             and self.json_data["compact_logging"] is not None
             else True
         )
-        
+
         self.image_hash_url = (
             self.json_data["image_hash_url"]
             if "image_hash_url" in self.json_data
             else None
         )
-        
+
         # Color palette
         self.rgb_colors_array = ColorMapper.generate_rgb_colors_array()
 
@@ -80,17 +79,18 @@ class PlaceClient:
         self.pix = {}
         self.image_size = None
         self.first_run_counter = 0
-        
+
         self.images = self.json_data["images"]
-        
-        self.image_base_path = os.path.join(os.path.abspath(os.getcwd())+"/images")
+
+        self.image_base_path = os.path.join(os.path.abspath(os.getcwd()) + "/images")
         if not os.path.isdir(self.image_base_path):
             os.mkdir(self.image_base_path)
-        
-        self.image_paths = {x: os.path.join(self.image_base_path, x + ".png") for x in self.images.keys()}
 
+        self.image_paths = {
+            x: os.path.join(self.image_base_path, x + ".png")
+            for x in self.images.keys()
+        }
 
-        
         self.image_hash = None
         self.pixel_x_start = {}
         self.pixel_y_start = {}
@@ -164,7 +164,7 @@ class PlaceClient:
     def get_resource_urls(self, url, name):
         image_url = None
         position_url = None
-        
+
         if url.endswith("/"):
             image_url = url + name + ".png"
             position_url = url + "positions.json"
@@ -175,15 +175,13 @@ class PlaceClient:
                 True,
                 image_url,
                 position_url,
-                name+".png",
+                name + ".png",
             )
         elif url.endswith("priority"):
             remote_priority_req = requests.get(url, stream=True)
 
             if remote_priority_req.status_code != 200:
-                logger.warning(
-                    "Failed to fetch remote priority target: {}", url
-                )
+                logger.warning("Failed to fetch remote priority target: {}", url)
                 return (False, None, None, None)
 
             image_url = remote_priority_req.text
@@ -210,13 +208,14 @@ class PlaceClient:
 
         remote_hash_req = requests.get(self.image_hash_url)
         remote_hash = remote_hash_req.content
-        
-        
+
         self.image_hash = remote_hash
 
         logger.debug("IMAGES: {}", self.images)
         for name, url in self.images.items():
-            (succes, image_url, position_url, image_name) = self.get_resource_urls(url, name)
+            (succes, image_url, position_url, image_name) = self.get_resource_urls(
+                url, name
+            )
 
             if not succes:
                 return False
@@ -248,9 +247,9 @@ class PlaceClient:
 
             with open(self.image_paths[name], "wb") as f:
                 shutil.copyfileobj(remote_image_req.raw, f)
-                    
+
             logger.debug("Bot source image updated: {}", image_url)
-                
+
             # Updating the hash so the auto updater doesn't get confused
             self.pixel_x_start[name] = None
             self.pixel_y_start[name] = None
@@ -266,7 +265,7 @@ class PlaceClient:
                         image_name,
                     )
                     break
-        
+
         # If we end up here we didn't update the x and y start!
         return True
 
@@ -292,6 +291,7 @@ class PlaceClient:
             logger.info("Loaded image size: {}", im.size)
 
             self.image_size[name] = im.size
+
     """ Main """
     # Draw a pixel at an x, y coordinate in r/place with a specific color
 
@@ -558,12 +558,16 @@ class PlaceClient:
                 y = 0
 
             if x == originalX and y == originalY and loopedOnce:
+
+                random_sleep = random.randint(1, 15)
+                logger.debug("Thread #{} :: random extra sleep {}", random_sleep)
                 logger.info(
-                    "Thread #{} : All pixels correct, trying again in 10 seconds... ",
+                    "Thread #{} : All pixels correct, trying again in {} seconds... ",
                     index,
+                    (10 + random_sleep),
                 )
                 self.waiting_thread_index = index
-                time.sleep(10)
+                time.sleep(10 + random_sleep)
                 imgOutdated = True
 
             if imgOutdated:
@@ -573,7 +577,10 @@ class PlaceClient:
                         break
                     except Exception as e:
                         logger.debug("Thread #{} : {}", index, e)
-                        logger.error("Thread #{} : Error detected while fetching board! retrying in 30 seconds", index)
+                        logger.error(
+                            "Thread #{} : Error detected while fetching board! retrying in 30 seconds",
+                            index
+                        )
                         time.sleep(30)
                 pix2 = boardimg.convert("RGB").load()
                 imgOutdated = False
@@ -587,7 +594,10 @@ class PlaceClient:
             is_transparent = self.pix[name][x, y][3] == 0
 
             new_rgb = ColorMapper.closest_color(target_rgb, self.rgb_colors_array)
-            if pix2[x + self.pixel_x_start[name], y + self.pixel_y_start[name]] != new_rgb:
+            if (
+                pix2[x + self.pixel_x_start[name], y + self.pixel_y_start[name]]
+                != new_rgb
+            ):
                 logger.debug(
                     "{}, {}, {}, {}",
                     pix2[x + self.pixel_x_start[name], y + self.pixel_y_start[name]],
@@ -599,7 +609,9 @@ class PlaceClient:
                     logger.debug(
                         "Thread #{} : Replacing {} pixel at: {},{} with {} color",
                         index,
-                        pix2[x + self.pixel_x_start[name], y + self.pixel_y_start[name]],
+                        pix2[
+                            x + self.pixel_x_start[name], y + self.pixel_y_start[name]
+                        ],
                         x + self.pixel_x_start[name],
                         y + self.pixel_y_start[name],
                         new_rgb,
@@ -781,10 +793,7 @@ class PlaceClient:
 
                     # get current pixel position from input image and replacement color
                     current_r, current_c, new_rgb = self.get_unset_pixel(
-                        current_r,
-                        current_c,
-                        index,
-                        imgname
+                        current_r, current_c, index, imgname
                     )
 
                     # get converted color
