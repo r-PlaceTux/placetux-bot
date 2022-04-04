@@ -1,6 +1,6 @@
 {
     "image_start_coords": [0, 0],
-    "thread_delay": 2,
+    "thread_delay": 10,
     "unverified_place_frequency": false,
     "compact_logging": true,
     "image_url": "https://r-placetux.github.io/place_tux/tux_combined_all.png",

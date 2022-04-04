@@ -248,17 +248,25 @@ class PlaceClient:
             waitTime = math.floor(
                 response.json()["errors"][0]["extensions"]["nextAvailablePixelTs"]
             )
+
+            # We add time because if in the cause multiple workers are used
+            # they could have the same amount of cooldown.
+            # This would let them to place pixels nearly at the same time!
+            # Thus they would try to fix the same pixel.
+            waitTime += self.json_data["thread_delay"] * 1000
             logger.error(
                 "Thread #{} : Failed placing pixel: rate limited, retrying in {} seconds",
                 thread_index,
                 math.floor(((waitTime / 1000) - time.time())),
             )
+
         else:
             waitTime = math.floor(
                 response.json()["data"]["act"]["data"][0]["data"][
                     "nextAvailablePixelTimestamp"
                 ]
             )
+
             logger.info("Thread #{} : Succeeded placing pixel", thread_index)
 
         # THIS COMMENTED CODE LETS YOU DEBUG THREADS FOR TESTING
